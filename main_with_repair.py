@@ -142,8 +142,8 @@ def simulated_annealing(rows, cols, costs, coverage, max_iter=10000, initial_tem
         # Cool down the temperature
         temperature *= cooling_rate
 
-    # best_solution = repair_solution(best_solution, costs, coverage, rows)
-    # best_cost = calculate_cost(best_solution, costs, coverage, rows)
+    best_solution = repair_solution(best_solution, costs, coverage, rows)
+    best_cost = calculate_cost(best_solution, costs, coverage, rows)
 
     return best_solution, best_cost
 
@@ -209,9 +209,9 @@ def evaluate_algorithm(rows, cols, costs, coverage, num_trials=30):
 benchmark_files = ["sppnw41.txt","sppnw42.txt","sppnw43.txt"]
 benchmark_results = {}
 
-# for file_path in benchmark_files:
-#     rows, cols, costs, coverage = parse_problem(file_path)
-#     benchmark_results[file_path] = evaluate_algorithm(rows, cols, costs, coverage)
+for file_path in benchmark_files:
+    rows, cols, costs, coverage = parse_problem(file_path)
+    benchmark_results[file_path] = evaluate_algorithm(rows, cols, costs, coverage)
 
 # Display results for each benchmark problem
 df_results = pd.DataFrame.from_dict(benchmark_results, orient='index')
