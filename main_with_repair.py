@@ -113,7 +113,7 @@ def repair_solution(solution, costs, coverage, rows):
     return solution
 
 
-def simulated_annealing(rows, cols, costs, coverage, max_iter=10000, initial_temp=100, cooling_rate=0.95):
+def simulated_annealing(rows, cols, costs, coverage, max_iter=1000, initial_temp=100, cooling_rate=0.99):
 
     # Initialize a random feasible solution
     current_solution = [random.randint(0, 1) for _ in range(cols)]
@@ -145,6 +145,9 @@ def simulated_annealing(rows, cols, costs, coverage, max_iter=10000, initial_tem
     best_solution = repair_solution(best_solution, costs, coverage, rows)
     best_cost = calculate_cost(best_solution, costs, coverage, rows)
 
+    # best_solution = repair_solution(best_solution, costs, coverage, rows)
+    # best_cost = calculate_cost(best_solution, costs, coverage, rows)
+
     return best_solution, best_cost
 
 
@@ -162,7 +165,7 @@ def is_feasible(solution, coverage, rows):
     return all(count >= 1 for count in flight_coverage)
 
 
-rows, cols, costs, coverage = parse_problem("sppnw41.txt")
+rows, cols, costs, coverage = parse_problem("datasets/sppnw41.txt")
 
 best_solution, best_cost = simulated_annealing(rows, cols, costs, coverage)
 
@@ -206,7 +209,7 @@ def evaluate_algorithm(rows, cols, costs, coverage, num_trials=30):
     }
 
 # Load and evaluate each benchmark problem
-benchmark_files = ["sppnw41.txt","sppnw42.txt","sppnw43.txt"]
+benchmark_files = ["datasets/sppnw41.txt","datasets/sppnw42.txt","datasets/sppnw43.txt"]
 benchmark_results = {}
 
 for file_path in benchmark_files:

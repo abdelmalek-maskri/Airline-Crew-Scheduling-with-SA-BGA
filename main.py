@@ -78,10 +78,11 @@ def simulated_annealing(rows, cols, costs, coverage, max_iter=7000, initial_temp
     no_improve_count = 0
 
     for iteration in range(max_iter):
-        # Generate a neighboring solution by flipping a random bit
+
         if temperature < min_temp or no_improve_count > no_improve_limit:
             break
-
+        
+        # Generate a neighboring solution by flipping a random bit
         neighbor = current_solution[:]
         flip_index = random.randint(0, cols - 1)
 
