@@ -143,11 +143,18 @@ def binary_genetic_algorithm(file_path, num_ind=40, max_iter=100, crossover_prob
     best_fitness = fitness[sorted_idx[0]]
     best_solution = pop[0]
     feasibility = is_feasible(best_solution, coverage, rows)
-    print(f"\n✅ Completed in {time.time() - start_time:.2f} seconds.")
-    print(f"🏅 Best fitness: {best_fitness}")
-    print(f"✅ Feasibility: {'Yes' if feasibility else 'No'}")
-    print_solution(best_solution, column_cost, coverage, rows)
+    # print(f"\n Completed in {time.time() - start_time:.2f} seconds.")
+    # print(f"Best fitness: {best_fitness}")
+    # print(f"Feasibility: {'Yes' if feasibility else 'No'}")
     return best_solution, best_fitness
+
+con_matrix, column_cost, coverage, rows, cols = read_in_data('datasets/sppnw41.txt')
+best_solution, best_fitness = binary_genetic_algorithm('datasets/sppnw41.txt')
+print_solution(best_solution, column_cost, coverage, rows)
+feasible = is_feasible(best_solution, coverage, rows)
+print(feasible)
+print("\n")
+
 
 def evaluate_algorithm(file_path, num_trials=10, max_iter=100):
     """Evaluates BGA over multiple trials."""
