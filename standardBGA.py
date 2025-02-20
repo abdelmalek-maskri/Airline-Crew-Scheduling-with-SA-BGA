@@ -5,7 +5,7 @@ import pandas as pd
 
 def read_in_data(file_path):
     """Reads problem data from a file and returns the constraint matrix and column costs."""
-    print(f"\n📂 Loading dataset: {file_path}")
+    # print(f"\nLoading dataset: {file_path}")
 
     with open(file_path, 'r') as f:
         rows, cols = map(int, f.readline().split())
@@ -21,7 +21,7 @@ def read_in_data(file_path):
             con_matrix[flights, j] = 1  # Assign crew coverage
             coverage[j] = flights  # Store flight coverage
 
-    print(f"✅ Loaded {rows} rows and {cols} columns")
+    # print(f"Loaded {rows} rows and {cols} columns")
     return con_matrix, column_cost, coverage, rows, cols
 
 def initialize_population(num_ind, num_bit, con_matrix):
@@ -121,11 +121,18 @@ def binary_genetic_algorithm(file_path, num_ind=40, max_iter=100, crossover_prob
     best_solution = pop[0]
     best_fitness = np.dot(best_solution, column_cost)
     feasibility = is_feasible(best_solution, coverage, rows)
-    print(f"\n✅ Completed in {time.time() - start_time:.2f} seconds.")
-    print(f"🏅 Best fitness: {best_fitness}")
-    print(f"✅ Feasibility: {'Yes' if feasibility else 'No'}")
-    print_solution(best_solution, column_cost, coverage, rows)
+    # print(f"\nCompleted in {time.time() - start_time:.2f} seconds.")
+    # print(f"Best fitness: {best_fitness}")
+    # print(f"Feasibility: {'Yes' if feasibility else 'No'}")
     return best_solution, best_fitness
+
+con_matrix, column_cost, coverage, rows, cols = read_in_data('datasets/sppnw41.txt')
+best_solution, best_fitness = binary_genetic_algorithm('datasets/sppnw41.txt')
+print_solution(best_solution, column_cost, coverage, rows)
+feasible = is_feasible(best_solution, coverage, rows)
+print(feasible)
+print("\n")
+
 
 def evaluate_algorithm(file_path, num_trials=30, max_iter=100):
     """Evaluates BGA over multiple trials."""
