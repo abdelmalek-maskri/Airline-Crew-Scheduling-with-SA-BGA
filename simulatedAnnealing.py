@@ -81,7 +81,8 @@ def simulated_annealing(rows, cols, costs, coverage, max_iter=2000, initial_temp
 # def simulated_annealing(rows, cols, costs, coverage, max_iter=1000,initial_temp=1000, cooling_rate=0.99, min_temp=1e-3, no_improve_limit=1000, penalty_factor=10000):
     
     #initialize a random feadible solution
-    current_solution = [random.randint(0, 1) for _ in range(cols)]
+    # current_solution = [random.randint(0, 1) for _ in range(cols)]
+    current_solution = greedy_initial_solution(rows, cols, costs, coverage)
 
     best_solution = current_solution[:]
     best_cost = calculate_cost(best_solution, costs, coverage, rows, penalty_factor)
