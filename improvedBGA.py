@@ -19,21 +19,154 @@ def read_in_data(file_path):
 
     return costs, coverage, rows, cols
 
-def initialize_population(population_size, chromosome_length, coverage, rows):
+def pseudo_random_initialization(population_size, chromosome_length, coverage, rows):
+    """
+    Initialize population using a pseudo-random method that selects columns based on randomly chosen rows.
+    """
     population = np.zeros((population_size, chromosome_length), dtype=int)
-
-    for individual in range(population_size):
-        # Randomly select schedules until all flights are covered exactly once
-        covered_flights = set()  # Track flights covered so far
-        while len(covered_flights) < rows:
-            available_schedules = [i for i in range(chromosome_length) if not covered_flights.intersection(coverage[i])]  # Schedules that don't overlap
-            if not available_schedules:
-                break  # No more non-overlapping schedules
-            chosen_schedule = np.random.choice(available_schedules)
-            population[individual, chosen_schedule] = 1
-            covered_flights.update(coverage[chosen_schedule])  # Add flights to the set
-
+    
+    # Create a reverse mapping: for each row, which columns cover it
+    row_to_columns = [[] for _ in range(rows + 1)]  # +1 because rows are 1-indexed
+    for column_idx, covered_rows in enumerate(coverage):
+        for row in covered_rows:
+            row_to_columns[row].append(column_idx)
+    
+    for individual_idx in range(population_size):
+        # Start with an empty solution
+        solution = np.zeros(chromosome_length, dtype=int)
+        
+        # Set of uncovered rows (1-indexed)
+        uncovered_rows = set(range(1, rows + 1))
+        
+        # Continue until all rows are covered or no more valid columns can be found
+        while uncovered_rows:
+            # Randomly select an uncovered row
+            if not uncovered_rows:
+                break
+            
+            selected_row = random.choice(list(uncovered_rows))
+            
+            # Find columns that can cover this row
+            valid_columns = row_to_columns[selected_row]
+            
+            if valid_columns:
+                # Randomly select a column
+                selected_column = random.choice(valid_columns)
+                
+                # Add this column to the solution
+                solution[selected_column] = 1
+                
+                # Update uncovered rows
+                rows_covered_by_column = coverage[selected_column]
+                uncovered_rows -= rows_covered_by_column
+            else:
+                # If no valid column can cover this row, simply remove it and continue
+                uncovered_rows.remove(selected_row)
+        
+        population[individual_idx] = solution
+    
     return population
+
+def heuristic_improvement_operator(solution, costs, coverage, rows, drop_factor=1.0, add_factor=1.0):
+    """
+    Apply the heuristic improvement operator with DROP and ADD procedures.
+    
+    Args:
+        solution: Binary solution vector
+        costs: Array of costs for each column
+        coverage: List of sets, each set containing the rows covered by that column
+        rows: Total number of rows to cover
+        drop_factor: Controls aggressiveness of DROP procedure (higher = more aggressive)
+        add_factor: Controls how cost is weighted in ADD procedure (higher = more cost sensitive)
+        
+    Returns:
+        Improved solution
+    """
+    improved_solution = solution.copy()
+    
+    # Create a coverage count for each row
+    row_coverage_count = [0] * (rows + 1)  # +1 because rows are 1-indexed
+    for column_idx in range(len(improved_solution)):
+        if improved_solution[column_idx] == 1:
+            for row in coverage[column_idx]:
+                row_coverage_count[row] += 1
+    
+    # ========== DROP PROCEDURE ==========
+    # Find over-covered rows (covered by more than one column)
+    over_covered_rows = [row for row in range(1, rows + 1) if row_coverage_count[row] > 1]
+    
+    # Apply drop factor - higher drop_factor increases probability of removing redundant columns
+    if random.random() < drop_factor:
+        # For each over-covered row, randomly remove columns until it's covered exactly once
+        for row in over_covered_rows:
+            # Find all columns covering this row that are currently in the solution
+            covering_columns = [col_idx for col_idx in range(len(improved_solution)) 
+                              if improved_solution[col_idx] == 1 and row in coverage[col_idx]]
+            
+            # Sort by cost in descending order (try to remove expensive columns first if drop_factor > 1.0)
+            if drop_factor > 1.0:
+                covering_columns.sort(key=lambda col: costs[col], reverse=True)
+            else:
+                # Randomly shuffle the columns to ensure random removal
+                random.shuffle(covering_columns)
+            
+            # Keep removing columns until this row is covered exactly once
+            for col_idx in covering_columns[1:]:  # Skip the first column to keep at least one
+                # Check if removing this column would leave all rows covered
+                can_remove = True
+                for covered_row in coverage[col_idx]:
+                    if row_coverage_count[covered_row] <= 1:
+                        can_remove = False
+                        break
+                
+                if can_remove:
+                    improved_solution[col_idx] = 0
+                    # Update coverage counts
+                    for covered_row in coverage[col_idx]:
+                        row_coverage_count[covered_row] -= 1
+    
+    # ========== ADD PROCEDURE ==========
+    # Find under-covered rows (not covered by any column)
+    under_covered_rows = [row for row in range(1, rows + 1) if row_coverage_count[row] == 0]
+    
+    if under_covered_rows:
+        # Create a reverse mapping: for each row, which columns cover it
+        row_to_columns = [[] for _ in range(rows + 1)]
+        for column_idx, covered_rows in enumerate(coverage):
+            for row in covered_rows:
+                row_to_columns[row].append(column_idx)
+        
+        # For each under-covered row, add a column that covers it while considering cost effectiveness
+        for row in under_covered_rows:
+            # Find columns that cover this row
+            candidate_columns = row_to_columns[row]
+            
+            if candidate_columns:
+                # Calculate cost effectiveness: value = newly covered rows / cost
+                # Higher add_factor gives more weight to cost considerations
+                column_values = []
+                for col in candidate_columns:
+                    new_rows_covered = sum(1 for r in coverage[col] if row_coverage_count[r] == 0)
+                    # Avoid division by zero
+                    if costs[col] == 0:
+                        column_values.append((col, float('inf')))
+                    else:
+                        value = (new_rows_covered ** add_factor) / costs[col]
+                        column_values.append((col, value))
+                
+                # Sort by value in descending order
+                column_values.sort(key=lambda x: x[1], reverse=True)
+                
+                # Select the best column
+                best_column = column_values[0][0]
+                improved_solution[best_column] = 1
+                
+                # Update coverage counts
+                for covered_row in coverage[best_column]:
+                    row_coverage_count[covered_row] += 1
+    
+    return improved_solution
+
 
 def calculate_fitness(population, costs, coverage, rows):
     """Calculates fitness based on cost and calculates constraint violations separately."""
@@ -58,16 +191,6 @@ def calculate_fitness(population, costs, coverage, rows):
 def stochastic_ranking(population, objective_values, constraint_violations, p_f=0.45):
     """
     Implements stochastic ranking for constraint handling.
-    
-    Args:
-        population: The current population
-        objective_values: Array of objective function values (costs)
-        constraint_violations: Array of constraint violation counts
-        p_f: Probability of using only the objective function for comparison
-             when both solutions are infeasible
-    
-    Returns:
-        Indices of sorted population
     """
     n = len(population)
     indices = list(range(n))
@@ -103,11 +226,27 @@ def stochastic_ranking(population, objective_values, constraint_violations, p_f=
             
     return indices
 
-def one_point_crossover(parent1, parent2):
-    """Performs one-point crossover between two parent solutions."""
-    crossover_point = random.randint(1, len(parent1) - 1)  
-    return np.concatenate((parent1[:crossover_point], parent2[crossover_point:])), \
-           np.concatenate((parent2[:crossover_point], parent1[crossover_point:]))
+# def one_point_crossover(parent1, parent2):
+#     """Performs one-point crossover between two parent solutions."""
+#     crossover_point = random.randint(1, len(parent1) - 1)  
+#     return np.concatenate((parent1[:crossover_point], parent2[crossover_point:])), \
+#            np.concatenate((parent2[:crossover_point], parent1[crossover_point:]))
+
+def uniform_crossover(parent1, parent2, mix_ratio=0.5):
+    """
+    Performs uniform crossover between two parent solutions.
+    
+    Args:
+        parent1, parent2: The parent solutions
+        mix_ratio: Probability of inheriting from parent1 (0.5 = equal chance)
+        
+    Returns:
+        Two offspring solutions
+    """
+    mask = np.random.random(len(parent1)) < mix_ratio
+    offspring1 = np.where(mask, parent1, parent2)
+    offspring2 = np.where(mask, parent2, parent1)
+    return offspring1, offspring2
 
 def mutate(offspring, mutation_probability, coverage, rows):
     """Applies mutation ensuring that each flight is covered exactly once."""
@@ -171,23 +310,22 @@ def print_solution(solution, costs, coverage, rows):
     print("====================================\n")
     print("Flight coverage: ", flight_coverage_count)
 
-def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=100, max_generations=1000, 
-                                                     crossover_probability=0.85, mutation_probability=None, p_f=0.45):
+def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=150, max_generations=100, 
+                                                     crossover_probability=0.85, mutation_probability=None, p_f=0.45,
+                                                     apply_heuristic_improvement=True):
     """
     Binary Genetic Algorithm with Stochastic Ranking for the Set Covering Problem.
-    
-    Args:
-        file_path: Path to the data file
-        population_size: Size of the population
-        max_generations: Maximum number of generations
-        crossover_probability: Probability of crossover
-        mutation_probability: Probability of mutation (defaults to 1/chromosome_length)
-        p_f: Probability of comparing by objective function when both solutions are infeasible
     """
     costs, coverage, rows, cols = read_in_data(file_path)
     
     mutation_probability = mutation_probability or (1 / cols)
-    population = initialize_population(population_size, cols, coverage, rows)
+    
+    # Use pseudo-random initialization
+    population = pseudo_random_initialization(population_size, cols, coverage, rows)
+    
+    # Apply heuristic improvement to initial population if specified
+    if apply_heuristic_improvement:
+        population = np.array([heuristic_improvement_operator(ind, costs, coverage, rows) for ind in population])
     
     for generation in range(max_generations):
         objective_values, constraint_violations = calculate_fitness(population, costs, coverage, rows)
@@ -203,10 +341,14 @@ def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=
         # Apply crossover
         for j in range(0, len(parents) - 1, 2):
             if random.random() < crossover_probability:
-                offspring[j], offspring[j + 1] = one_point_crossover(parents[j], parents[j + 1])
+                offspring[j], offspring[j + 1] = uniform_crossover(parents[j], parents[j + 1])
         
         # Apply mutation
         offspring = np.array([mutate(ind, mutation_probability, coverage, rows) for ind in offspring])
+        
+        # Apply heuristic improvement to offspring if specified
+        if apply_heuristic_improvement:
+            offspring = np.array([heuristic_improvement_operator(ind, costs, coverage, rows) for ind in offspring])
         
         # Update population with offspring
         population = np.vstack((population, offspring))
@@ -215,6 +357,11 @@ def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=
     final_objective_values, final_constraint_violations = calculate_fitness(population, costs, coverage, rows)
     sorted_indices = stochastic_ranking(population, final_objective_values, final_constraint_violations, p_f)
     best_solution = population[sorted_indices[0]]
+    
+    # Apply a final heuristic improvement to the best solution
+    if apply_heuristic_improvement:
+        best_solution = heuristic_improvement_operator(best_solution, costs, coverage, rows)
+    
     best_fitness = np.dot(best_solution, costs)
     
     return best_solution, best_fitness
