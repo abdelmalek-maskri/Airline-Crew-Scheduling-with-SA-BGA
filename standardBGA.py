@@ -56,6 +56,7 @@ def calculate_fitness(population, costs, coverage, rows):
         # Penalize over-covered and uncovered flights
         penalties[i] = sum(abs(count - 1) for count in flight_coverage_count)  
 
+
     penalty = 10000 
     fitness_values += penalty * penalties  
 
@@ -132,11 +133,11 @@ def is_feasible(solution, flight_coverage_list, num_flights):
         if solution[schedule_id] == 1:
             for flight in flight_coverage_list[schedule_id]:
                 flight_coverage_count[flight - 1] += 1
-    return all(count == 1 for count in flight_coverage_count)  # Ensure each flight is covered exactly once
+    return all(count == 1 for count in flight_coverage_count) 
 
-def print_solution(solution, costs, flight_coverage_list, num_flights):
+def print_solution(solution, costs, coverage, rows):
     """Prints the selected schedules and total cost."""
-    selected_schedules = [(schedule_id, costs[schedule_id], flight_coverage_list[schedule_id]) 
+    selected_schedules = [(schedule_id, costs[schedule_id], coverage[schedule_id]) 
                           for schedule_id in range(len(solution)) if solution[schedule_id] == 1]
 
     print("\n==== Genetic Algorithm Solution ====")
@@ -153,10 +154,10 @@ def print_solution(solution, costs, flight_coverage_list, num_flights):
     for schedule_id, cost, flights in selected_schedules:
         print(f"- Schedule {schedule_id}: Cost = {cost}, Covers Flights: {sorted(flights)}")
     
-    flight_coverage_count = [0] * num_flights
+    flight_coverage_count = [0] * rows
     for schedule_id in range(len(solution)):
         if solution[schedule_id] == 1:
-            for flight in flight_coverage_list[schedule_id]:
+            for flight in coverage[schedule_id]:
                 flight_coverage_count[flight - 1] += 1
 
     print("====================================\n")
@@ -168,7 +169,7 @@ def binary_genetic_algorithm(file_path, population_size=100, max_generations=100
     costs, coverage, rows, cols = read_in_data(file_path)
     
     #which should I use for mutation probability?
-    mutation_probability = mutation_probability or 0.001 #(1 / cols)
+    mutation_probability = mutation_probability or (1 / cols) #0.001
     population = initialize_population(population_size, cols, coverage, rows)
     
     for generation in range(max_generations):
@@ -196,10 +197,10 @@ def binary_genetic_algorithm(file_path, population_size=100, max_generations=100
     return best_solution, best_fitness
 
 # Example usage
-costs, flight_coverage_list, num_flights, num_schedules = read_in_data('datasets/sppnw41.txt')
-best_solution, best_fitness = binary_genetic_algorithm('datasets/sppnw41.txt')
-print_solution(best_solution, costs, flight_coverage_list, num_flights)
-feasible = is_feasible(best_solution, flight_coverage_list, num_flights)
+costs, coverage, rows, num_schedules = read_in_data('datasets/sppnw42.txt')
+best_solution, best_fitness = binary_genetic_algorithm('datasets/sppnw42.txt')
+print_solution(best_solution, costs, coverage, rows)
+feasible = is_feasible(best_solution, coverage, rows)
 print(feasible)
 print("\n")
 
@@ -209,7 +210,8 @@ def evaluate_algorithm(file_path, num_trials=30, max_generations=100):
     total_costs = []
     execution_times = []
     
-    for _ in range(num_trials):
+    for trial in range(num_trials):
+        print(f"Trial {trial+1}/{num_trials}...")
         start_time = time.time()
         solution, cost = binary_genetic_algorithm(file_path, max_generations=max_generations)
         feasible = is_feasible(solution, read_in_data(file_path)[1], read_in_data(file_path)[2])
