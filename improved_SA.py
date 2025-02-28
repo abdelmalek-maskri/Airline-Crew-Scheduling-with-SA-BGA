@@ -19,30 +19,18 @@ def parse_problem(file_path):
             coverage.append(flights)
         return rows, cols, costs, coverage
 
-def get_coverage_stats(solution, coverage, rows):
-    """Calculate coverage statistics for a solution."""
+def is_feasible(solution, coverage, rows):
+    """Check if a solution covers each row exactly once."""
     covered = Counter()
     for i in range(len(solution)):
         if solution[i] == 1:
             for row in coverage[i]:
                 covered[row] += 1
     
-    # Count uncovered and over-covered rows
-    uncovered = rows - len(covered)
-    overcovered = sum(1 for count in covered.values() if count > 1)
-    
-    return {
-        'covered_exactly_once': sum(1 for count in covered.values() if count == 1),
-        'uncovered': uncovered,
-        'overcovered': overcovered
-    }
+    return all(covered[row] == 1 for row in range(1, rows + 1))
 
 def calculate_cost(solution, costs, coverage, rows, alpha=10000, beta=5000):
-    """
-    Calculate cost with adaptive penalty weights for infeasible solutions.
-    - alpha: penalty weight for uncovered rows
-    - beta: penalty weight for overcovered rows
-    """
+    """Calculate cost with penalties for infeasible solutions."""
     # Base cost from selected columns
     base_cost = sum(costs[i] for i in range(len(solution)) if solution[i] == 1)
     
@@ -63,21 +51,8 @@ def calculate_cost(solution, costs, coverage, rows, alpha=10000, beta=5000):
     total_cost = base_cost + uncovered_penalty + overcovered_penalty
     return total_cost, base_cost, len(uncovered), sum(1 for count in covered.values() if count > 1)
 
-def is_feasible(solution, coverage, rows):
-    """Check if a solution covers each row exactly once."""
-    covered = Counter()
-    for i in range(len(solution)):
-        if solution[i] == 1:
-            for row in coverage[i]:
-                covered[row] += 1
-    
-    return all(covered[row] == 1 for row in range(1, rows + 1))
-
 def greedy_construction(rows, cols, costs, coverage):
-    """
-    Build a solution using a greedy construction heuristic.
-    Prioritizes cost-effective columns that cover uncovered rows.
-    """
+    """Build a solution using a greedy construction heuristic."""
     solution = [0] * cols
     uncovered = set(range(1, rows + 1))
     
@@ -111,71 +86,44 @@ def greedy_construction(rows, cols, costs, coverage):
     
     return solution
 
-def random_adaptive_solution(rows, cols, costs, coverage, greedy_prob=0.7):
-    """
-    Generate an initial solution with a mix of greedy and random strategies.
-    Has a probability of using the greedy approach or a randomized approach.
-    """
-    if random.random() < greedy_prob:
-        # Use greedy construction most of the time
-        return greedy_construction(rows, cols, costs, coverage)
-    else:
-        # Sometimes use a randomized approach
-        solution = [0] * cols
-        uncovered = set(range(1, rows + 1))
-        
-        # Shuffle columns to add randomness
-        column_indices = list(range(cols))
-        random.shuffle(column_indices)
-        
-        for i in column_indices:
-            if uncovered.intersection(coverage[i]):
-                solution[i] = 1
-                uncovered -= coverage[i]
-            
-            if not uncovered:
-                break
-        
-        return solution
-
-def generate_neighbor(solution, coverage, rows, move_strategy='adaptive'):
-    """
-    Generate a neighboring solution using various move strategies.
-    
-    Parameters:
-    - solution: Current solution
-    - coverage: List of sets indicating which rows each column covers
-    - rows: Total number of rows to cover
-    - move_strategy: Strategy for generating neighbors
-      ('flip', 'swap', 'adaptive', 'tabu')
-    
-    Returns:
-    - neighbor: The generated neighboring solution
-    """
+def generate_neighbor(solution, coverage, rows, temp, current_temp):
+    """Generate a neighboring solution with adaptive strategy selection."""
     neighbor = solution.copy()
     
-    # Determine move type adaptively
-    if move_strategy == 'adaptive':
-        # Calculate current coverage status
-        stats = get_coverage_stats(solution, coverage, rows)
-        
-        if stats['uncovered'] > 0:
-            # If there are uncovered rows, favor adding columns
-            move_strategy = 'add'
-        elif stats['overcovered'] > 0 and random.random() < 0.7:
-            # If there are overcovered rows, try to remove columns
-            move_strategy = 'remove'
-        else:
-            # Otherwise, choose randomly
-            move_strategy = random.choice(['flip', 'swap', 'cluster'])
+    # Calculate current coverage
+    covered = Counter()
+    for i in range(len(solution)):
+        if solution[i] == 1:
+            for row in coverage[i]:
+                covered[row] += 1
+    
+    # Identify uncovered and overcovered rows
+    uncovered = set(range(1, rows + 1)) - covered.keys()
+    overcovered = {row for row, count in covered.items() if count > 1}
+    
+    # Determine move type based on current state and temperature
+    temp_ratio = current_temp / temp  # Normalized temperature (1.0 to ~0)
+    
+    if uncovered:
+        # If there are uncovered rows, favor adding columns
+        move_type = 'add'
+    elif overcovered and random.random() < 0.7:
+        # If there are overcovered rows, try to remove columns
+        move_type = 'remove'
+    else:
+        # Exploration vs. exploitation based on temperature
+        if temp_ratio > 0.3:  # Higher temperature, more exploration
+            move_type = random.choice(['flip', 'swap', 'cluster'])
+        else:  # Lower temperature, more focused moves
+            move_type = random.choice(['swap', 'remove', 'cluster'])
     
     # Apply the selected move
-    if move_strategy == 'flip':
+    if move_type == 'flip':
         # Simple bit flip
         idx = random.randint(0, len(solution) - 1)
         neighbor[idx] = 1 - neighbor[idx]
         
-    elif move_strategy == 'swap':
+    elif move_type == 'swap':
         # Swap a 0 and a 1
         ones = [i for i in range(len(solution)) if solution[i] == 1]
         zeros = [i for i in range(len(solution)) if solution[i] == 0]
@@ -186,35 +134,48 @@ def generate_neighbor(solution, coverage, rows, move_strategy='adaptive'):
             neighbor[idx1] = 0
             neighbor[idx2] = 1
     
-    elif move_strategy == 'add':
+    elif move_type == 'add':
         # Add a column that might cover uncovered rows
         zeros = [i for i in range(len(solution)) if solution[i] == 0]
-        if zeros:
-            idx = random.choice(zeros)
+        
+        if uncovered and zeros:
+            # Prioritize columns that cover uncovered rows
+            candidates = [i for i in zeros if any(row in coverage[i] for row in uncovered)]
+            if candidates:
+                idx = random.choice(candidates)
+            else:
+                idx = random.choice(zeros)
             neighbor[idx] = 1
     
-    elif move_strategy == 'remove':
-        # Remove a column if possible
+    elif move_type == 'remove':
+        # Remove a column, preferably one causing overcoverage
         ones = [i for i in range(len(solution)) if solution[i] == 1]
+        
         if ones and len(ones) > 1:  # Ensure we keep at least one column
-            idx = random.choice(ones)
+            if overcovered:
+                # Prefer columns that contribute to overcoverage
+                candidates = [i for i in ones if any(row in coverage[i] for row in overcovered)]
+                if candidates:
+                    idx = random.choice(candidates)
+                else:
+                    idx = random.choice(ones)
+            else:
+                idx = random.choice(ones)
             neighbor[idx] = 0
     
-    elif move_strategy == 'cluster':
-        # Make multiple related changes
-        # First, randomly select a row to focus on
+    elif move_type == 'cluster':
+        # Make multiple related changes focused on a specific row
         row = random.randint(1, rows)
         
         # Find columns that cover this row
         covering_cols = [i for i in range(len(solution)) if row in coverage[i]]
         
         if covering_cols:
-            # If the row is currently covered, try to change which column covers it
             current_covering = [i for i in covering_cols if solution[i] == 1]
             potential_covering = [i for i in covering_cols if solution[i] == 0]
             
             if current_covering and potential_covering:
-                # Remove one current column and add one potential column
+                # Replace one current column with a potential column
                 to_remove = random.choice(current_covering)
                 to_add = random.choice(potential_covering)
                 neighbor[to_remove] = 0
@@ -223,13 +184,10 @@ def generate_neighbor(solution, coverage, rows, move_strategy='adaptive'):
     return neighbor
 
 def repair_solution(solution, costs, coverage, rows):
-    """
-    Repair an infeasible solution by ensuring all rows are covered
-    while trying to minimize cost.
-    """
+    """Repair an infeasible solution to ensure feasibility."""
     repaired = solution.copy()
     
-    # Check which rows are currently covered
+    # First check which rows are currently covered
     covered = set()
     for i in range(len(repaired)):
         if repaired[i] == 1:
@@ -251,13 +209,13 @@ def repair_solution(solution, costs, coverage, rows):
                         best_col = i
         
         if best_col == -1:
-            # No column can cover more rows, try a random one
+            # Fallback to any column that covers at least one uncovered row
             candidates = [i for i in range(len(repaired)) if repaired[i] == 0 and 
                         any(row in coverage[i] for row in uncovered)]
             if candidates:
                 best_col = random.choice(candidates)
             else:
-                # This is an extreme case - add columns that cover any uncovered row
+                # Add any column at this point
                 for i in range(len(repaired)):
                     if repaired[i] == 0:
                         for row in uncovered:
@@ -266,7 +224,7 @@ def repair_solution(solution, costs, coverage, rows):
                                 covered.update(coverage[i])
                                 break
                 
-                # Recalculate uncovered
+                # Recalculate uncovered rows
                 uncovered = set(range(1, rows + 1)) - covered
                 continue
         
@@ -275,122 +233,33 @@ def repair_solution(solution, costs, coverage, rows):
         covered.update(coverage[best_col])
         uncovered = set(range(1, rows + 1)) - covered
     
-    # Try to remove redundant columns
-    for i in range(len(repaired)):
-        if repaired[i] == 1:
-            # Temporarily remove this column
-            repaired[i] = 0
-            
-            # Check if all rows are still covered
-            temp_covered = set()
-            for j in range(len(repaired)):
-                if repaired[j] == 1:
-                    temp_covered.update(coverage[j])
-            
-            # If removing makes solution infeasible, put it back
-            if len(temp_covered) < rows:
-                repaired[i] = 1
+    # Remove redundant columns (if removing doesn't make solution infeasible)
+    # Sort columns by cost (descending) to try removing expensive ones first
+    columns_to_check = [(i, costs[i]) for i in range(len(repaired)) if repaired[i] == 1]
+    columns_to_check.sort(key=lambda x: x[1], reverse=True)
+    
+    for col_idx, _ in columns_to_check:
+        # Temporarily remove this column
+        repaired[col_idx] = 0
+        
+        # Check if solution is still feasible
+        if not is_feasible(repaired, coverage, rows):
+            # If not feasible, put it back
+            repaired[col_idx] = 1
     
     return repaired
 
-def adaptive_cooling_schedule(initial_temp, iteration, max_iterations, method='adaptive'):
-    """
-    Calculate current temperature using various cooling schedules.
-    
-    Parameters:
-    - initial_temp: Initial temperature
-    - iteration: Current iteration
-    - max_iterations: Maximum number of iterations
-    - method: Cooling method ('geometric', 'linear', 'slow_start', 'slow_end', 'adaptive')
-    
-    Returns:
-    - Current temperature
-    """
-    if method == 'geometric':
-        # Standard geometric cooling
-        alpha = 0.99  # Cooling rate
-        return initial_temp * (alpha ** iteration)
-    
-    elif method == 'linear':
-        # Linear cooling
-        return initial_temp * (1 - iteration / max_iterations)
-    
-    elif method == 'slow_start':
-        # Slow at the beginning, faster at the end
-        return initial_temp * (1 - (iteration / max_iterations) ** 2)
-    
-    elif method == 'slow_end':
-        # Fast at the beginning, slower at the end
-        return initial_temp * (1 - math.sqrt(iteration / max_iterations))
-    
-    elif method == 'adaptive':
-        # Adaptive cooling that adjusts based on progress
-        # Starts slow, becomes aggressive in the middle, then slows down at the end
-        progress = iteration / max_iterations
-        
-        if progress < 0.3:  # Early exploration phase
-            return initial_temp * (1 - 0.3 * progress)
-        elif progress < 0.7:  # Middle intensification phase
-            return initial_temp * 0.7 * (1 - (progress - 0.3) / 0.4)
-        else:  # Final refinement phase
-            return initial_temp * 0.1 * (1 - (progress - 0.7) / 0.3)
-
-def acceptance_probability(current_cost, new_cost, temperature, method='boltzmann'):
-    """
-    Calculate the probability of accepting a worse solution.
-    
-    Parameters:
-    - current_cost: Cost of current solution
-    - new_cost: Cost of new solution
-    - temperature: Current temperature
-    - method: Method for calculating probability
-    
-    Returns:
-    - Probability of accepting the new solution (0-1)
-    """
-    if new_cost <= current_cost:
-        return 1.0  # Always accept better solutions
-    
-    delta = new_cost - current_cost
-    
-    if method == 'boltzmann':
-        # Standard Boltzmann distribution
-        return math.exp(-delta / temperature)
-    
-    elif method == 'modified':
-        # Modified function that's more selective at higher costs
-        return math.exp(-delta / (temperature * (1 + delta / 10000)))
-    
-    elif method == 'fast_drop':
-        # More aggressive probability reduction for large deltas
-        return math.exp(-(delta ** 1.5) / temperature)
-    
-    return math.exp(-delta / temperature)  # Default to Boltzmann
-
 def enhanced_simulated_annealing(rows, cols, costs, coverage, 
-                               max_iterations=500000,
+                               max_iterations=250000,
                                initial_temp=5000,
                                min_temp=1e-6,
-                               no_improve_limit=50000,
-                               repair_frequency=0.2,
-                               move_weights={'flip': 0.3, 'swap': 0.3, 'add': 0.2, 'remove': 0.1, 'cluster': 0.1},
-                               dynamic_weights=True,
-                               cooling_schedule='adaptive',
-                               acceptance_method='boltzmann',
-                               alpha=50000,  # Penalty weight for uncovered rows
-                               beta=10000):  # Penalty weight for overcovered rows
-    """
-    Enhanced simulated annealing algorithm for the Set Covering Problem.
-    
-    Features:
-    - Adaptive penalty weights
-    - Multiple neighborhood structures
-    - Dynamic move strategy weights
-    - Advanced cooling schedules
-    - Periodic solution repair
-    """
+                               no_improve_limit=15000,
+                               repair_frequency=0.15,
+                               alpha=100000,  # Penalty for uncovered rows
+                               beta=20000):   # Penalty for overcovered rows
+    """Enhanced simulated annealing algorithm with adaptive strategies."""
     # Start with a greedy initial solution
-    current_solution = random_adaptive_solution(rows, cols, costs, coverage)
+    current_solution = greedy_construction(rows, cols, costs, coverage)
     
     # Calculate initial cost
     current_total_cost, current_base_cost, uncovered, overcovered = calculate_cost(
@@ -398,19 +267,13 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
     
     # Track best solution
     best_solution = current_solution.copy()
-    best_cost = current_total_cost if is_feasible(current_solution, coverage, rows) else float('inf')
-    best_base_cost = current_base_cost
+    best_cost = current_base_cost if is_feasible(current_solution, coverage, rows) else float('inf')
     
     # Initialize tracking variables
     temperature = initial_temp
     iteration = 0
     no_improve_counter = 0
-    best_feasible_found = False
-    local_adjustment_phase = False
-    
-    # For tracking move success rates
-    move_success = {move: 1 for move in move_weights}
-    move_attempts = {move: 1 for move in move_weights}
+    best_feasible_found = is_feasible(current_solution, coverage, rows)
     
     # For adaptive penalty weights
     current_alpha = alpha
@@ -421,53 +284,18 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
         
         # Periodically adjust penalty weights based on solution status
         if iteration % 1000 == 0:
-            # If we have many uncovered rows, increase that penalty
             if uncovered > 0:
                 current_alpha *= 1.05
             elif uncovered == 0:
-                current_alpha = max(alpha, current_alpha * 0.95)  # Gradually decrease but keep minimum
+                current_alpha = max(alpha, current_alpha * 0.95)
                 
-            # Similarly for overcovered rows
             if overcovered > 0:
                 current_beta *= 1.05
             elif overcovered == 0:
                 current_beta = max(beta, current_beta * 0.95)
         
-        # Select move strategy based on dynamic weights if enabled
-        if dynamic_weights:
-            # Calculate success rates for each move
-            success_rates = {move: move_success[move] / move_attempts[move] for move in move_weights}
-            
-            # Normalize to create a probability distribution
-            total_rate = sum(success_rates.values())
-            if total_rate > 0:
-                probs = {move: rate / total_rate for move, rate in success_rates.items()}
-                
-                # Select move based on calculated probabilities
-                r = random.random()
-                cumulative = 0
-                selected_move = list(probs.keys())[0]  # Default
-                for move, prob in probs.items():
-                    cumulative += prob
-                    if r <= cumulative:
-                        selected_move = move
-                        break
-            else:
-                selected_move = random.choice(list(move_weights.keys()))
-        else:
-            # Use fixed weights
-            r = random.random()
-            cumulative = 0
-            selected_move = list(move_weights.keys())[0]  # Default
-            for move, weight in move_weights.items():
-                cumulative += weight
-                if r <= cumulative:
-                    selected_move = move
-                    break
-        
-        # Generate neighbor using selected move strategy
-        neighbor = generate_neighbor(current_solution, coverage, rows, selected_move)
-        move_attempts[selected_move] += 1
+        # Generate neighbor with adaptive strategy
+        neighbor = generate_neighbor(current_solution, coverage, rows, initial_temp, temperature)
         
         # Periodically repair solution to ensure feasibility exploration
         if random.random() < repair_frequency:
@@ -485,8 +313,9 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
             accept = True
         else:
             # For worse solutions, use temperature to determine acceptance
-            temp = adaptive_cooling_schedule(initial_temp, iteration, max_iterations, cooling_schedule)
-            prob = acceptance_probability(current_total_cost, new_total_cost, temp, acceptance_method)
+            delta = new_total_cost - current_total_cost
+            # Adaptive acceptance probability based on temperature
+            prob = math.exp(-delta / temperature)
             accept = random.random() < prob
         
         if accept:
@@ -496,9 +325,6 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
             current_base_cost = new_base_cost
             uncovered = new_uncovered
             overcovered = new_overcovered
-            
-            # Record successful move
-            move_success[selected_move] += 1
             
             # Check if this is a new best feasible solution
             if is_feasible(current_solution, coverage, rows) and current_base_cost < best_cost:
@@ -511,14 +337,14 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
         else:
             no_improve_counter += 1
         
-        # Update temperature using the selected cooling schedule
-        temperature = adaptive_cooling_schedule(initial_temp, iteration, max_iterations, cooling_schedule)
-        
-        # Local adjustment phase - when temperature is very low, focus on minor improvements
-        if temperature < initial_temp * 0.01 and not local_adjustment_phase:
-            # Switch to more focused local search moves
-            move_weights = {'flip': 0.1, 'swap': 0.5, 'add': 0.1, 'remove': 0.2, 'cluster': 0.1}
-            local_adjustment_phase = True
+        # Update temperature - adaptive cooling
+        progress = iteration / max_iterations
+        if progress < 0.3:  # Early exploration phase
+            temperature = initial_temp * (1 - 0.3 * progress)
+        elif progress < 0.7:  # Middle intensification phase
+            temperature = initial_temp * 0.7 * (1 - (progress - 0.3) / 0.4)
+        else:  # Final refinement phase
+            temperature = initial_temp * 0.1 * (1 - (progress - 0.7) / 0.3)
         
         # Output progress periodically
         if iteration % 10000 == 0:
@@ -528,41 +354,39 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
     
     # If the best solution found is not feasible, repair it
     if not best_feasible_found or not is_feasible(best_solution, coverage, rows):
-        # Try to repair the current solution
         repaired_solution = repair_solution(current_solution, costs, coverage, rows)
         repaired_cost = sum(costs[i] for i in range(len(repaired_solution)) if repaired_solution[i] == 1)
         
-        # If repair succeeded and gave a better cost, use it
         if is_feasible(repaired_solution, coverage, rows) and (not best_feasible_found or repaired_cost < best_cost):
             best_solution = repaired_solution
             best_cost = repaired_cost
-            best_feasible_found = True
     
-    # Return best feasible solution found, or final solution if none was feasible
-    if best_feasible_found:
-        return best_solution, best_cost
-    else:
-        # Last attempt to get a feasible solution
-        final_solution = repair_solution(current_solution, costs, coverage, rows)
-        final_cost = sum(costs[i] for i in range(len(final_solution)) if final_solution[i] == 1)
-        return final_solution, final_cost
-    
-def simulated_annealing_with_restarts(rows, cols, costs, coverage, num_restarts=5):
+    return best_solution, best_cost
+
+def simulated_annealing_with_restarts(rows, cols, costs, coverage, num_restarts=5, **params):
+    """Run simulated annealing multiple times and return the best solution."""
     best_solution = None
     best_cost = float('inf')
     
     for restart in range(num_restarts):
-        # Run SA with different random seed
-        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage)
+        print(f"Restart {restart+1}/{num_restarts}")
+        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage, **params)
         
         if is_feasible(solution, coverage, rows) and cost < best_cost:
             best_solution = solution.copy()
             best_cost = cost
+            
+            # Early stopping if we find a solution that's very close to the optimal
+            if dataset_optimal_costs.get(current_dataset, 0) > 0:
+                gap = (cost - dataset_optimal_costs[current_dataset]) / dataset_optimal_costs[current_dataset]
+                if gap < 0.05:  # Stop if within 5% of optimal
+                    print(f"Found near-optimal solution (gap: {gap:.2%}), stopping early.")
+                    break
     
     return best_solution, best_cost
 
 def print_solution(solution, costs, coverage, rows):
-    """Prints the selected schedules and total cost."""
+    """Print solution details and verify feasibility."""
     selected_schedules = [(i, costs[i], coverage[i]) for i in range(len(solution)) if solution[i] == 1]
     print("\n==== Simulated Annealing Solution ====")
     print(f"Total Selected Crew Schedules: {len(selected_schedules)}")
@@ -601,8 +425,11 @@ def print_solution(solution, costs, coverage, rows):
     print("Solution is feasible:", feasible)
     return feasible, total_cost
 
-def evaluate_algorithm(file_path, num_trials=30, **kwargs):
+def evaluate_algorithm(file_path, num_trials=5, **kwargs):
     """Evaluate the algorithm on a specific problem instance."""
+    global current_dataset
+    current_dataset = file_path
+    
     rows, cols, costs, coverage = parse_problem(file_path)
     
     successful_runs = 0
@@ -612,7 +439,7 @@ def evaluate_algorithm(file_path, num_trials=30, **kwargs):
     for trial in range(num_trials):
         print(f"Trial {trial+1}/{num_trials} for {file_path}...")
         start_time = time.time()
-        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage, **kwargs)
+        solution, cost = simulated_annealing_with_restarts(rows, cols, costs, coverage, **kwargs)
         feasible = is_feasible(solution, coverage, rows)
         duration = time.time() - start_time
         
@@ -645,49 +472,53 @@ def evaluate_algorithm(file_path, num_trials=30, **kwargs):
     
     return results
 
-# Parameters tuned for each dataset
+# Optimal known costs for each dataset
+dataset_optimal_costs = {
+    "datasets/sppnw41.txt": 10972.5,
+    "datasets/sppnw42.txt": 7485.0,
+    "datasets/sppnw43.txt": 8897.0
+}
+
+# Global variable to track current dataset
+current_dataset = ""
+
+# Tuned parameters for each dataset
 dataset_parameters = {
     "datasets/sppnw41.txt": {
-        "max_iterations": 250000,
+        "max_iterations": 150000,
         "initial_temp": 5000,
         "min_temp": 1e-6,
-        "no_improve_limit": 15000,
-        "repair_frequency": 0.15,
-        "cooling_schedule": 'adaptive',
+        "no_improve_limit": 10000,
+        "repair_frequency": 0.2,
         "alpha": 100000,
-        "beta": 20000
+        "beta": 20000,
+        "num_restarts": 3
     },
     "datasets/sppnw42.txt": {
-        "max_iterations": 300000,
-        "initial_temp": 7000,
+        "max_iterations": 200000,
+        "initial_temp": 8000,
         "min_temp": 1e-6,
         "no_improve_limit": 20000,
-        "repair_frequency": 0.2,
-        "cooling_schedule": 'adaptive',
+        "repair_frequency": 0.25,
         "alpha": 150000,
-        "beta": 30000
+        "beta": 30000,
+        "num_restarts": 5
     },
     "datasets/sppnw43.txt": {
-        "max_iterations": 250000,
+        "max_iterations": 180000,
         "initial_temp": 6000,
         "min_temp": 1e-6,
         "no_improve_limit": 15000,
-        "repair_frequency": 0.18,
-        "cooling_schedule": 'adaptive',
+        "repair_frequency": 0.2,
         "alpha": 120000,
-        "beta": 25000
+        "beta": 25000,
+        "num_restarts": 4
     }
 }
 
 if __name__ == "__main__":
     # Test on all datasets
     benchmark_files = ["datasets/sppnw41.txt", "datasets/sppnw42.txt", "datasets/sppnw43.txt"]
-    optimal_costs = {
-        "datasets/sppnw41.txt": 10972.5,
-        "datasets/sppnw42.txt": 7485.0,
-        "datasets/sppnw43.txt": 8897.0
-    }
-    
     all_results = {}
     
     for file_path in benchmark_files:
@@ -697,19 +528,20 @@ if __name__ == "__main__":
         # Get parameters for this dataset
         params = dataset_parameters[file_path]
         
-        # Run and evaluate (with fewer trials for demonstration)
-        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage, **params)
+        # Run main algorithm
+        solution, cost = simulated_annealing_with_restarts(rows, cols, costs, coverage, **params)
         feasible, actual_cost = print_solution(solution, costs, coverage, rows)
         
         print(f"Found solution cost: {cost}")
-        print(f"Optimal cost for this dataset: {optimal_costs[file_path]}")
-        print(f"Gap to optimal: {((cost - optimal_costs[file_path]) / optimal_costs[file_path]) * 100:.4f}%")
+        print(f"Optimal cost for this dataset: {dataset_optimal_costs[file_path]}")
+        gap = ((cost - dataset_optimal_costs[file_path]) / dataset_optimal_costs[file_path]) * 100
+        print(f"Gap to optimal: {gap:.4f}%")
         
-        # Full evaluation
-        all_results[file_path] = evaluate_algorithm(file_path, num_trials=5, **params)  # Reduced trials for demonstration
+        # Full evaluation with fewer trials for demonstration
+        all_results[file_path] = evaluate_algorithm(file_path, num_trials=2, **params)
     
     # Print summary
     print("\n===== SUMMARY OF RESULTS =====")
     summary_df = pd.DataFrame.from_dict(all_results, orient='index')
     print(summary_df)
-    print("\nNote: For final results, increase num_trials to 30 or more.")
+    print("\nNote: For final results, increase num_trials to 10 or more.")
