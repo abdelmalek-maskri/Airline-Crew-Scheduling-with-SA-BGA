@@ -310,6 +310,55 @@ def print_solution(solution, costs, coverage, rows):
     print("====================================\n")
     print("Flight coverage: ", flight_coverage_count)
 
+
+def tournament_selection(population, objective_values, constraint_violations, tournament_size=3, p_f=0.45):
+    """
+    Tournament selection with stochastic ranking principles.
+    
+    Args:
+        population: The current population
+        objective_values: Array of objective function values (costs)
+        constraint_violations: Array of constraint violation counts
+        tournament_size: Number of individuals to compete in each tournament
+        p_f: Probability of using objective function for comparison when both solutions are infeasible
+        
+    Returns:
+        Selected parents as numpy array
+    """
+    selected = []
+    for _ in range(len(population) // 3):
+        # Randomly select tournament_size individuals
+        candidates = random.sample(range(len(population)), tournament_size)
+        
+        # Find the best candidate using stochastic ranking principles
+        best_candidate = candidates[0]
+        
+        for candidate in candidates[1:]:
+            # Both solutions feasible - compare by objective function
+            if constraint_violations[best_candidate] == 0 and constraint_violations[candidate] == 0:
+                if objective_values[best_candidate] > objective_values[candidate]:
+                    best_candidate = candidate
+            
+            # Both solutions infeasible - probabilistic comparison
+            elif constraint_violations[best_candidate] > 0 and constraint_violations[candidate] > 0:
+                if random.random() < p_f:
+                    # Compare by objective function with probability p_f
+                    if objective_values[best_candidate] > objective_values[candidate]:
+                        best_candidate = candidate
+                else:
+                    # Compare by constraint violation with probability (1-p_f)
+                    if constraint_violations[best_candidate] > constraint_violations[candidate]:
+                        best_candidate = candidate
+            
+            # One solution feasible, one infeasible - feasible is better
+            elif constraint_violations[candidate] == 0 and constraint_violations[best_candidate] > 0:
+                best_candidate = candidate
+        
+        # Add the best candidate to the selected individuals
+        selected.append(population[best_candidate])
+    
+    return np.array(selected)
+
 def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=150, max_generations=100, 
                                                      crossover_probability=0.85, mutation_probability=None, p_f=0.45,
                                                      apply_heuristic_improvement=True):
@@ -335,7 +384,7 @@ def binary_genetic_algorithm_with_stochastic_ranking(file_path, population_size=
         population = population[sorted_indices[:population_size]]
         
         # Select parents for reproduction
-        parents = population[:population_size // 3]
+        parents = tournament_selection(population, objective_values, constraint_violations, 3, p_f)
         offspring = parents.copy()
 
         # Apply crossover
