@@ -37,7 +37,7 @@ def get_coverage_stats(solution, coverage, rows):
         'overcovered': overcovered
     }
 
-def calculate_cost(solution, costs, coverage, rows, alpha=10000, beta=5000):
+def calculate_cost(solution, costs, coverage, rows, alpha=130000, beta=25000):
     """
     Calculate cost with adaptive penalty weights for infeasible solutions.
     - alpha: penalty weight for uncovered rows
@@ -367,28 +367,32 @@ def acceptance_probability(current_cost, new_cost, temperature, method='boltzman
     
     return math.exp(-delta / temperature)  # Default to Boltzmann
 
-def enhanced_simulated_annealing(rows, cols, costs, coverage, 
-                               max_iterations=500000,
-                               initial_temp=5000,
-                               min_temp=1e-6,
-                               no_improve_limit=50000,
-                               repair_frequency=0.2,
-                               move_weights={'flip': 0.3, 'swap': 0.3, 'add': 0.2, 'remove': 0.1, 'cluster': 0.1},
-                               dynamic_weights=True,
-                               cooling_schedule='adaptive',
-                               acceptance_method='boltzmann',
-                               alpha=50000,  # Penalty weight for uncovered rows
-                               beta=10000):  # Penalty weight for overcovered rows
+def optimized_simulated_annealing(rows, cols, costs, coverage):
     """
-    Enhanced simulated annealing algorithm for the Set Covering Problem.
+    Simulated annealing algorithm for the Set Covering Problem with tuned parameters.
     
-    Features:
-    - Adaptive penalty weights
-    - Multiple neighborhood structures
-    - Dynamic move strategy weights
-    - Advanced cooling schedules
-    - Periodic solution repair
+    This function uses the optimized parameters found through grid search:
+    - max_iterations: 200000
+    - initial_temp: 5000
+    - no_improve_limit: 15000
+    - repair_frequency: 0.2
+    - alpha: 130000
+    - beta: 25000
+    - move_weights: {'flip': 0.3, 'swap': 0.25, 'add': 0.2, 'remove': 0.15, 'cluster': 0.1}
     """
+    # Parameter settings from tuning
+    max_iterations = 200000
+    initial_temp = 5000
+    min_temp = 1e-6
+    no_improve_limit = 15000
+    repair_frequency = 0.2
+    alpha = 130000
+    beta = 25000
+    move_weights = {'flip': 0.3, 'swap': 0.25, 'add': 0.2, 'remove': 0.15, 'cluster': 0.1}
+    dynamic_weights = True
+    cooling_schedule = 'adaptive'
+    acceptance_method = 'boltzmann'
+    
     # Start with a greedy initial solution
     current_solution = random_adaptive_solution(rows, cols, costs, coverage)
     
@@ -521,10 +525,10 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
             local_adjustment_phase = True
         
         # Output progress periodically
-        if iteration % 10000 == 0:
-            print(f"Iteration {iteration}, Temp: {temperature:.4f}, Current cost: {current_base_cost}, " 
-                  f"Best: {best_cost if best_feasible_found else 'None'}, "
-                  f"Uncovered: {uncovered}, Overcovered: {overcovered}")
+        # if iteration % 10000 == 0:
+        #     print(f"Iteration {iteration}, Temp: {temperature:.4f}, Current cost: {current_base_cost}, " 
+        #           f"Best: {best_cost if best_feasible_found else 'None'}, "
+        #           f"Uncovered: {uncovered}, Overcovered: {overcovered}")
     
     # If the best solution found is not feasible, repair it
     if not best_feasible_found or not is_feasible(best_solution, coverage, rows):
@@ -546,174 +550,87 @@ def enhanced_simulated_annealing(rows, cols, costs, coverage,
         final_solution = repair_solution(current_solution, costs, coverage, rows)
         final_cost = sum(costs[i] for i in range(len(final_solution)) if final_solution[i] == 1)
         return final_solution, final_cost
-    
-
-def simulated_annealing_with_restarts(rows, cols, costs, coverage, num_restarts=5):
-    best_solution = None
-    best_cost = float('inf')
-    
-    for restart in range(num_restarts):
-        # Run SA with different random seed
-        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage)
-        
-        if is_feasible(solution, coverage, rows) and cost < best_cost:
-            best_solution = solution.copy()
-            best_cost = cost
-    
-    return best_solution, best_cost
-    
-
 
 def print_solution(solution, costs, coverage, rows):
     """Prints the selected schedules and total cost."""
-    selected_schedules = [(i, costs[i], coverage[i]) for i in range(len(solution)) if solution[i] == 1]
+    selected_schedules = [(schedule_id, costs[schedule_id], coverage[schedule_id]) 
+                          for schedule_id in range(len(solution)) if solution[schedule_id] == 1]
+
     print("\n==== Simulated Annealing Solution ====")
     print(f"Total Selected Crew Schedules: {len(selected_schedules)}")
+
     if not selected_schedules:
         print("No schedules selected")
-        return
+        return False, 0
+    
     total_cost = sum(cost for _, cost, _ in selected_schedules)
     print(f"Total Cost: {total_cost}")
     print("\nSelected Crew Schedules:")
-    for idx, cost, flights in selected_schedules[:10]:  # Print first 10 for brevity
-        print(f"- Schedule {idx}: Cost = {cost}, Covers Flights: {sorted(flights)}")
-    if len(selected_schedules) > 10:
-        print(f"... and {len(selected_schedules) - 10} more schedules (omitted for brevity)")
     
-    # Verify the solution coverage
-    flight_coverage = [0] * rows
-    for i in range(len(solution)):
-        if solution[i] == 1:
-            for flight in coverage[i]:
-                flight_coverage[flight - 1] += 1
+    for schedule_id, cost, flights in selected_schedules:
+        print(f"- Schedule {schedule_id}: Cost = {cost}, Covers Flights: {sorted(flights)}")
     
-    # Count coverage issues
-    uncovered = sum(1 for count in flight_coverage if count == 0)
-    overcovered = sum(1 for count in flight_coverage if count > 1)
-    correctly_covered = sum(1 for count in flight_coverage if count == 1)
-    
-    print("====================================")
-    print(f"Coverage Statistics:")
-    print(f"- Correctly covered flights: {correctly_covered}/{rows} ({correctly_covered/rows*100:.2f}%)")
-    print(f"- Uncovered flights: {uncovered}")
-    print(f"- Overcovered flights: {overcovered}")
+    flight_coverage_count = [0] * rows
+    for schedule_id in range(len(solution)):
+        if solution[schedule_id] == 1:
+            for flight in coverage[schedule_id]:
+                flight_coverage_count[flight - 1] += 1
+
     print("====================================\n")
+    print("Flight coverage: ", flight_coverage_count)
     
     # Verify feasibility
     feasible = is_feasible(solution, coverage, rows)
     print("Solution is feasible:", feasible)
+    
     return feasible, total_cost
 
-def evaluate_algorithm(file_path, num_trials=30, **kwargs):
-    """Evaluate the algorithm on a specific problem instance."""
-    rows, cols, costs, coverage = parse_problem(file_path)
-    
+def evaluate_algorithm(file_path, num_trials=30, max_iterations=200000):
+    """Evaluates the simulated annealing algorithm across multiple trials."""
     successful_runs = 0
     total_costs = []
     execution_times = []
     
+    rows, cols, costs, coverage = parse_problem(file_path)
+    
     for trial in range(num_trials):
-        print(f"Trial {trial+1}/{num_trials} for {file_path}...")
+        print(f"Trial {trial+1}/{num_trials}...")
         start_time = time.time()
-        solution, cost = simulated_annealing_with_restarts(rows, cols, costs, coverage)
+        solution, cost = optimized_simulated_annealing(rows, cols, costs, coverage)
         feasible = is_feasible(solution, coverage, rows)
         duration = time.time() - start_time
-        
+
         if feasible:
             successful_runs += 1
             total_costs.append(cost)
-        else:
-            print(f"Warning: Trial {trial+1} produced an infeasible solution!")
-        
         execution_times.append(duration)
-    
+
     success_rate = (successful_runs / num_trials) * 100
     average_cost = np.mean(total_costs) if total_costs else float('inf')
-    min_cost = min(total_costs) if total_costs else float('inf')
     std_dev_cost = np.std(total_costs) if total_costs else float('inf')
     average_time = np.mean(execution_times)
-    
-    results = {
+
+    return {
         "Success Rate (%)": success_rate,
         "Average Cost": average_cost,
-        "Minimum Cost": min_cost,
         "Standard Deviation": std_dev_cost,
         "Average Execution Time (s)": average_time
     }
-    
-    print(f"Results for {file_path}:")
-    for key, value in results.items():
-        print(f"- {key}: {value}")
-    print()
-    
-    return results
 
-# Parameters tuned for each dataset
-dataset_parameters = {
-    "datasets/sppnw41.txt": {
-        "max_iterations": 250000,
-        "initial_temp": 5000,
-        "min_temp": 1e-6,
-        "no_improve_limit": 15000,
-        "repair_frequency": 0.15,
-        "cooling_schedule": 'adaptive',
-        "alpha": 100000,
-        "beta": 20000
-    },
-    "datasets/sppnw42.txt": {
-        "max_iterations": 300000,
-        "initial_temp": 7000,
-        "min_temp": 1e-6,
-        "no_improve_limit": 20000,
-        "repair_frequency": 0.2,
-        "cooling_schedule": 'adaptive',
-        "alpha": 150000,
-        "beta": 30000
-    },
-    "datasets/sppnw43.txt": {
-        "max_iterations": 250000,
-        "initial_temp": 6000,
-        "min_temp": 1e-6,
-        "no_improve_limit": 15000,
-        "repair_frequency": 0.18,
-        "cooling_schedule": 'adaptive',
-        "alpha": 120000,
-        "beta": 25000
-    }
-}
 
-if __name__ == "__main__":
-    # Test on all datasets
-    benchmark_files = ["datasets/sppnw41.txt" , "datasets/sppnw42.txt", "datasets/sppnw43.txt"]
-    optimal_costs = {
-        "datasets/sppnw41.txt": 10972.5,
-        "datasets/sppnw42.txt": 7485.0,
-        "datasets/sppnw43.txt": 8897.0
-    }
+benchmark_files = ["datasets/sppnw41.txt", "datasets/sppnw42.txt", "datasets/sppnw43.txt"]
+
+# Example usage - run on a single dataset
+file_path = 'datasets/sppnw41.txt'
+rows, cols, costs, coverage = parse_problem(file_path)
+print(f"Running optimized simulated annealing on {file_path}")
+best_solution, best_cost = optimized_simulated_annealing(rows, cols, costs, coverage)
+print_solution(best_solution, costs, coverage, rows)
+
+# # Run evaluation on all benchmark files with fewer trials for demonstration
+# print("\nEvaluating algorithm on all benchmark datasets...")
+# benchmark_results = {file: evaluate_algorithm(file) for file in benchmark_files}
     
-    all_results = {}
-    
-    for file_path in benchmark_files:
-        print(f"\n{'='*30}\nProcessing {file_path}\n{'='*30}")
-        rows, cols, costs, coverage = parse_problem(file_path)
-        
-        # Get parameters for this dataset
-        params = dataset_parameters[file_path]
-        
-        # Run and evaluate (with fewer trials for demonstration)
-        solution, cost = enhanced_simulated_annealing(rows, cols, costs, coverage)
-        feasible, actual_cost = print_solution(solution, costs, coverage, rows)
-        
-        print(f"Found solution cost: {cost}")
-        print(f"Optimal cost for this dataset: {optimal_costs[file_path]}")
-        print(f"Gap to optimal: {((cost - optimal_costs[file_path]) / optimal_costs[file_path]) * 100:.4f}%")
-        
-        # Full evaluation
-        all_results[file_path] = evaluate_algorithm(file_path, num_trials=5, **params)  # Reduced trials for demonstration
-    
-    # Print summary
-    
-    print("\n===== SUMMARY OF RESULTS =====")
-    summary_df = pd.DataFrame.from_dict(all_results, orient='index')
-    print(summary_df)
-    print("\nNote: For final results, increase num_trials to 30 or more.")
+# # Display results in a table
+# df_results = pd.DataFrame.from_dict(benchmark_results, orient='index')
+# print(df_results)
