@@ -70,36 +70,36 @@ def one_point_crossover(parent1, parent2):
     return np.concatenate((parent1[:crossover_point], parent2[crossover_point:])), \
            np.concatenate((parent2[:crossover_point], parent1[crossover_point:]))
 
-# def two_point_crossover(parent1, parent2):
-#     """Performs two-point crossover between two parent solutions."""
-#     # Select two random crossover points
-#     crossover_point1 = random.randint(1, len(parent1) - 2)  # First point
-#     crossover_point2 = random.randint(crossover_point1 + 1, len(parent1) - 1)  # Second point
+def two_point_crossover(parent1, parent2):
+    """Performs two-point crossover between two parent solutions."""
+    # Select two random crossover points
+    crossover_point1 = random.randint(1, len(parent1) - 2)  # First point
+    crossover_point2 = random.randint(crossover_point1 + 1, len(parent1) - 1)  # Second point
 
-#     # Create offspring by swapping the segment between the two points
-#     offspring1 = np.concatenate((
-#         parent1[:crossover_point1],  # Part before first point from parent1
-#         parent2[crossover_point1:crossover_point2],  # Segment between points from parent2
-#         parent1[crossover_point2:]  # Part after second point from parent1
-#     ))
-#     offspring2 = np.concatenate((
-#         parent2[:crossover_point1],  # Part before first point from parent2
-#         parent1[crossover_point1:crossover_point2],  # Segment between points from parent1
-#         parent2[crossover_point2:]  # Part after second point from parent2
-#     ))
+    # Create offspring by swapping the segment between the two points
+    offspring1 = np.concatenate((
+        parent1[:crossover_point1],  # Part before first point from parent1
+        parent2[crossover_point1:crossover_point2],  # Segment between points from parent2
+        parent1[crossover_point2:]  # Part after second point from parent1
+    ))
+    offspring2 = np.concatenate((
+        parent2[:crossover_point1],  # Part before first point from parent2
+        parent1[crossover_point1:crossover_point2],  # Segment between points from parent1
+        parent2[crossover_point2:]  # Part after second point from parent2
+    ))
 
-#     return offspring1, offspring2
+    return offspring1, offspring2
 
-# def uniform_crossover(parent1, parent2):
-#     """Performs uniform crossover between two parent solutions."""
-#     # Create a mask to decide which parent contributes each gene
-#     mask = np.random.randint(2, size=len(parent1))  # Randomly choose 0 or 1 for each gene
+def uniform_crossover(parent1, parent2):
+    """Performs uniform crossover between two parent solutions."""
+    # Create a mask to decide which parent contributes each gene
+    mask = np.random.randint(2, size=len(parent1))  # Randomly choose 0 or 1 for each gene
 
-#     # Create offspring by selecting genes from parents based on the mask
-#     offspring1 = np.where(mask, parent1, parent2)  # If mask is 1, take from parent1; else, parent2
-#     offspring2 = np.where(mask, parent2, parent1)  # If mask is 1, take from parent2; else, parent1
+    # Create offspring by selecting genes from parents based on the mask
+    offspring1 = np.where(mask, parent1, parent2)  # If mask is 1, take from parent1; else, parent2
+    offspring2 = np.where(mask, parent2, parent1)  # If mask is 1, take from parent2; else, parent1
 
-#     return offspring1, offspring2
+    return offspring1, offspring2
 
 def mutate(offspring, mutation_probability, coverage, rows):
     """Applies mutation ensuring that each flight is covered exactly once."""
@@ -163,36 +163,96 @@ def print_solution(solution, costs, coverage, rows):
     print("====================================\n")
     print("Flight coverage: ", flight_coverage_count)
 
-#can change the population size (decrease it for a better run time)
-def binary_genetic_algorithm(file_path, population_size=100, max_generations=1000, crossover_probability=0.85, mutation_probability=None):
+    
+def tournament_selection(population, fitness_values, penalties, tournament_size=3):
+    """
+    Tournament selection method that prioritizes feasibility and then cost.
+    
+    Args:
+        population: The current population
+        fitness_values: Fitness values for each individual (lower is better)
+        penalties: Penalty values for constraint violations (lower is better)
+        tournament_size: Number of individuals in each tournament
+        
+    Returns:
+        Selected individuals for reproduction
+    """
+    population_size = len(population)
+    selected = []
+    
+    # Select enough parents to maintain population size after crossover
+    while len(selected) < population_size // 3:
+        # Randomly select tournament_size individuals
+        tournament_indices = random.sample(range(population_size), tournament_size)
+        
+        # Find the best individual in the tournament
+        best_index = tournament_indices[0]
+        for idx in tournament_indices[1:]:
+            # First prioritize feasibility (lower penalties)
+            if penalties[idx] < penalties[best_index]:
+                best_index = idx
+            # If both have same feasibility, prioritize cost (lower fitness)
+            elif penalties[idx] == penalties[best_index] and fitness_values[idx] < fitness_values[best_index]:
+                best_index = idx
+        
+        selected.append(population[best_index])
+    
+    return np.array(selected)
 
+
+#can change the population size (decrease it for a better run time)
+# Modify your binary_genetic_algorithm function to use tournament selection:
+
+def binary_genetic_algorithm(file_path, population_size=100, max_generations=1000, 
+                            crossover_probability=0.85, mutation_probability=None,
+                            elite_percentage=0.1):  # Add elite percentage parameter
+    
     costs, coverage, rows, cols = read_in_data(file_path)
     
-    #which should I use for mutation probability?
-    mutation_probability = mutation_probability or (1 / cols) #0.001
+    mutation_probability = mutation_probability or (1 / cols) 
     population = initialize_population(population_size, cols, coverage, rows)
+    
+    # Calculate number of elite individuals to preserve
+    num_elite = max(1, int(population_size * elite_percentage))
     
     for generation in range(max_generations):
         fitness_values, penalties = calculate_fitness(population, costs, coverage, rows)
-        sorted_indices = np.lexsort((penalties, fitness_values))  # Sort by penalties first, then cost
-        population = population[sorted_indices[:population_size]]
         
-        parents = population[:population_size // 3]
+        # Sort population by penalties first, then cost
+        sorted_indices = np.lexsort((fitness_values, penalties))  
+        sorted_population = population[sorted_indices]
+        
+        # Store elite individuals
+        elite_individuals = sorted_population[:num_elite].copy()
+        
+        # The rest remains similar
+        sorted_fitness = fitness_values[sorted_indices[:population_size]]
+        sorted_penalties = penalties[sorted_indices[:population_size]]
+        
+        # Use tournament selection for the remainder
+        parents = tournament_selection(sorted_population[:population_size], 
+                                      sorted_fitness, sorted_penalties)
         offspring = parents.copy()
 
         for j in range(0, len(parents) - 1, 2):
             if random.random() < crossover_probability:
                 offspring[j], offspring[j + 1] = one_point_crossover(parents[j], parents[j + 1])
-                # offspring[j], offspring[j + 1] = two_point_crossover(parents[j], parents[j + 1])
-                # offspring[j], offspring[j + 1] = uniform_crossover(parents[j], parents[j + 1])
         
-        offspring = np.array([mutate(ind, mutation_probability, coverage, rows) for ind in offspring])
-        population = np.vstack((population, offspring))
-
+        offspring = np.array([mutate(ind, mutation_probability, coverage, rows) 
+                             for ind in offspring])
+        
+        # Form new population including elite individuals
+        population = np.vstack((elite_individuals, offspring))
+        
+        # If needed, add more random individuals to maintain population size
+        if len(population) < population_size:
+            additional_individuals = initialize_population(
+                population_size - len(population), cols, coverage, rows)
+            population = np.vstack((population, additional_individuals))
     
+    # Return the best solution found
     best_solution = population[0]
     best_fitness = np.dot(best_solution, costs)
-    feasibility = is_feasible(best_solution, coverage, rows)
     
     return best_solution, best_fitness
 
@@ -239,3 +299,11 @@ benchmark_results = {file: evaluate_algorithm(file) for file in benchmark_files}
 
 df_results = pd.DataFrame.from_dict(benchmark_results, orient='index')
 print(df_results)
+
+
+
+
+
+
+
+
