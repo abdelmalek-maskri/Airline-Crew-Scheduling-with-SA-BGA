@@ -162,91 +162,8 @@ def print_solution(solution, costs, coverage, rows):
 
     print("====================================\n")
     print("Flight coverage: ", flight_coverage_count)
-
-
-def scale_fitness(fitness_values, penalties, scaling_method='linear', scaling_factor=1.5):
-    """
-    Scales fitness values to give more weight to better solutions.
     
-    Args:
-        fitness_values: Raw fitness values (costs) for each individual (lower is better)
-        penalties: Constraint violation penalties for each individual
-        scaling_method: Method to use for scaling ('linear', 'rank', 'sigma', 'exponential')
-        scaling_factor: Controls intensity of scaling (higher = more pressure toward best solutions)
-    
-    Returns:
-        Scaled fitness values (still lower is better)
-    """
-    # Create a copy to avoid modifying the original values
-    scaled_fitness = fitness_values.copy()
-    
-    # First handle penalties - solutions with no penalties (feasible) should always be favored
-    # Apply a large penalty value to infeasible solutions
-    penalty_factor = max(scaled_fitness) * 10  # Make penalty large enough to matter
-    scaled_fitness += penalties * penalty_factor
-    
-    if scaling_method == 'linear':
-        # Linear scaling: f' = a * f + b
-        # We want the best solution (minimum) to have the highest scaled value
-        # So we invert the values first
-        max_fitness = np.max(scaled_fitness)
-        inverted_fitness = max_fitness - scaled_fitness
-        
-        # Apply linear scaling
-        avg_fitness = np.mean(inverted_fitness)
-        if avg_fitness > 0:  # Avoid division by zero
-            # Calculate scaling coefficients
-            a = (scaling_factor - 1) * avg_fitness / (max_fitness - avg_fitness) if max_fitness > avg_fitness else 1
-            b = avg_fitness * (1 - a)
-            
-            # Apply scaling
-            scaled_fitness = a * inverted_fitness + b
-        else:
-            scaled_fitness = inverted_fitness
-        
-    elif scaling_method == 'rank':
-        # Rank-based scaling - assign fitness proportional to rank
-        # Sort indices from best (lowest value) to worst
-        sorted_indices = np.argsort(scaled_fitness)
-        ranks = np.zeros_like(sorted_indices)
-        ranks[sorted_indices] = np.arange(len(scaled_fitness))
-        
-        # Higher rank (better solution) gets higher scaled fitness
-        n = len(scaled_fitness)
-        scaled_fitness = (2 - scaling_factor) / n + (2 * (n - 1 - ranks) * (scaling_factor - 1)) / (n * (n - 1))
-        
-    elif scaling_method == 'sigma':
-        # Sigma scaling: f' = max(f - (avg - c*sigma), 0)
-        # Inverted since our fitness is minimization
-        max_fitness = np.max(scaled_fitness)
-        inverted_fitness = max_fitness - scaled_fitness
-        
-        avg = np.mean(inverted_fitness)
-        sigma = np.std(inverted_fitness)
-        
-        if sigma > 0:  # Avoid division by zero
-            scaled_fitness = inverted_fitness - (avg - scaling_factor * sigma)
-            scaled_fitness = np.maximum(scaled_fitness, 0.01)  # Ensure positive values
-        else:
-            scaled_fitness = inverted_fitness
-            
-    elif scaling_method == 'exponential':
-        # Exponential scaling: f' = exp(-f/T)
-        # Inverted since our fitness is minimization
-        max_fitness = np.max(scaled_fitness)
-        inverted_fitness = max_fitness - scaled_fitness
-        
-        # Apply temperature-like parameter for control
-        T = np.mean(inverted_fitness) / scaling_factor
-        if T > 0:  # Avoid division by zero
-            scaled_fitness = np.exp(inverted_fitness / T)
-        else:
-            scaled_fitness = inverted_fitness
-    
-    return scaled_fitness
-
-    
-def tournament_selection(population, fitness_values, penalties, tournament_size=3):
+def tournament_selection(population, fitness_values, penalties, tournament_size=2):
     """
     Tournament selection method that prioritizes feasibility and then cost.
     
@@ -374,11 +291,11 @@ def evaluate_algorithm(file_path, num_trials=30, max_generations=100):
         "Average Execution Time (s)": average_time
     }
 
-# benchmark_files = ["datasets/sppnw41.txt", "datasets/sppnw42.txt", "datasets/sppnw43.txt"]
-# benchmark_results = {file: evaluate_algorithm(file) for file in benchmark_files}
+benchmark_files = ["datasets/sppnw41.txt", "datasets/sppnw42.txt", "datasets/sppnw43.txt"]
+benchmark_results = {file: evaluate_algorithm(file) for file in benchmark_files}
 
-# df_results = pd.DataFrame.from_dict(benchmark_results, orient='index')
-# print(df_results)
+df_results = pd.DataFrame.from_dict(benchmark_results, orient='index')
+print(df_results)
 
 
 
