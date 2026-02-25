@@ -51,7 +51,7 @@ Located in: `simulatedAnnealing.py`
    - The console will display the selected schedules, total cost, and feasibility.
    - A summary of results is saved to `summary.csv`.
 
-## 📊 Benchmarking and Evaluation
+## Benchmarking and Evaluation
 Each algorithm runs **30 trials** to collect statistical performance data:
 - **Success Rate (%)**: The percentage of runs producing a feasible solution.
 - **Average Cost**: The mean total cost of the selected schedules.
@@ -65,7 +65,7 @@ python improvedBGA.py --benchmark
 python simulatedAnnealing.py --benchmark
 ```
 
-## 📖 Documentation
+## Documentation
 - **[Requirements](requirements.pdf)**: Dependencies and setup instructions.
 - **[Manual](manual.pdf)**: Guide on using and modifying the code.
 - **[Replication Guide](replication.pdf)**: Steps to reproduce results.
