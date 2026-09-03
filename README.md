@@ -71,5 +71,6 @@ python simulatedAnnealing.py --benchmark
 - **[Replication Guide](replication.pdf)**: Steps to reproduce results.
 
 ---
+
 This project demonstrates **evolutionary and probabilistic optimization methods** for solving real-world scheduling challenges efficiently. 
 
