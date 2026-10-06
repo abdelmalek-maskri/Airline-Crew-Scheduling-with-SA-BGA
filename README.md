@@ -1,9 +1,9 @@
 # Air Crew Scheduling Optimization
 
-This repository contains implementations of various optimization algorithms for solving the **Air Crew Scheduling Problem**. The objective is to minimize the total cost of crew schedules while ensuring all flight legs are covered exactly once.
+This repository contains implementations of various optimization algorithms for solving the **Air Crew Scheduling Problem**. The objective is to minimize the total cost of crew schedules while ensuring all flight legs are covered exactly once
 
 ## Problem Overview
-The air crew scheduling problem is a **Set Partitioning Problem (SPP)** where we need to assign crews to flights in a way that minimizes cost and meets coverage constraints. Given a set of flight legs and available crew schedules, the goal is to find the most cost-effective assignment.
+The air crew scheduling problem is a **Set Partitioning Problem (SPP)** where we need to assign crews to flights in a way that minimizes cost and meets coverage constraints. Given a set of flight legs and available crew schedules, the goal is to find the most cost-effective assignment
 
 ## Implemented Algorithms
 This repository provides **three optimization approaches** for solving the problem:
