@@ -16,9 +16,9 @@ Located in: `standardBGA.py`
 
 ### **2. Improved Binary Genetic Algorithm (ImprovedBGA)**  
 Located in: `improvedBGA.py`
-- Adds **heuristic improvement operators** to refine solutions.
-- Uses **stochastic ranking** to balance fitness and feasibility.
-- Incorporates **uniform crossover** and **proportional bit-flip mutation**.
+- Adds **heuristic improvement operators** to refine solutions
+- Uses **stochastic ranking** to balance fitness and feasibility
+- Incorporates **uniform crossover** and **proportional bit-flip mutation**
 
 ### **3. Simulated Annealing (SA)**  
 Located in: `simulatedAnnealing.py`
