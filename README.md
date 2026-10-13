@@ -22,9 +22,9 @@ Located in: `improvedBGA.py`
 
 ### **3. Simulated Annealing (SA)**  
 Located in: `simulatedAnnealing.py`
-- Uses an **initial feasible solution** and generates **neighboring solutions**.
-- Applies the **Metropolis criterion** for probabilistic acceptance of worse solutions.
-- Implements **linear cooling** to gradually reduce temperature over iterations.
+- Uses an **initial feasible solution** and generates **neighboring solutions**
+- Applies the **Metropolis criterion** for probabilistic acceptance of worse solutions
+- Implements **linear cooling** to gradually reduce temperature over iterations
 
 ## Running the Code
 1. **Install dependencies:**  
