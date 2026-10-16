@@ -10,9 +10,9 @@ This repository provides **three optimization approaches** for solving the probl
 
 ### **1. Standard Binary Genetic Algorithm (StandardBGA)**  
 Located in: `standardBGA.py`
-- Uses **tournament selection**, **one-point crossover**, and **mutation**.
-- Fitness function penalizes infeasible solutions to improve convergence.
-- Implements **elitism** to preserve the best solutions across generations.
+- Uses **tournament selection**, **one-point crossover**, and **mutation**
+- Fitness function penalizes infeasible solutions to improve convergence
+- Implements **elitism** to preserve the best solutions across generations
 
 ### **2. Improved Binary Genetic Algorithm (ImprovedBGA)**  
 Located in: `improvedBGA.py`
